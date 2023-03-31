@@ -240,7 +240,7 @@ class CactiWrapper:
         print("copy ", default_cfg_file_path, " to ", populated_cfg_file_path)
         f = open(populated_cfg_file_path, 'a+')
         f.write('\n############## User-Specified Hardware Attributes ##############\n')
-        if dram_size < one_gb:
+        if dram_size <= one_gb:
             f.write('-size (bytes) ' + str(dram_size) + '\n')
         else:
             f.write('-size (Gb) ' + str(dram_size >> 30) + '\n')

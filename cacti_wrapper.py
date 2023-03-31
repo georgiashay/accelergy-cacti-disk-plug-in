@@ -3,7 +3,7 @@ CACTI_ACCURACY = 70  # in your metric, please set the accuracy you think CACTI's
 #-------------------------------------------------------------------------------
 # CACTI7 wrapper for generating energy estimations for plain SRAM scraptchpad
 #-------------------------------------------------------------------------------
-import subprocess, os, csv, glob, tempfile, math, shutil
+import subprocess, os, csv, glob, tempfile, math, shutil, json
 from datetime import datetime
 
 class CactiWrapper:
@@ -135,8 +135,7 @@ class CactiWrapper:
     # ----------------- DRAM related ---------------------------
 
     def DRAM_attr_supported(self, attributes):
-
-        supported_attributes = {'type': ['DDR3','HBM2','GDDR5','LPDDR','LPDDR4']}
+        supported_attributes = {'type': ['DDR', 'DDR2', 'DDR3', 'DDR4', 'DDR5', 'HBM2', 'LPDDR', 'LPDDR2', 'LPDDR3', 'LPDDR4', 'LPDDR5']}
         if 'type' in attributes and 'width' in attributes:
             if attributes['type'] in supported_attributes['type']:
                 return True
@@ -150,26 +149,25 @@ class CactiWrapper:
             return None
 
     def DRAM_estimate_energy(self, interface):
-        action_name = interface['action_name']
-        width = interface['attributes']['width']
-        energy = 0
-        if 'read' in action_name or 'write' in action_name:
-            tech = interface['attributes']['type']
-            # Public data
-            if tech == 'LPDDR4':
-                energy = 8 * width
-            # Malladi et al., ISCA'12
-            elif tech == 'LPDDR':
-                energy = 40 * width
-            elif tech == 'DDR3':
-                energy = 70 * width
-            # Chatterjee et al., MICRO'17
-            elif tech == 'GDDR5':
-                energy = 14 * width
-            elif tech == 'HBM2':
-                energy = 3.9 * width
-            else:
-                energy = 0
+        attributes = interface['attributes']
+        tech_node = attributes['technology']
+        if isinstance(tech_node, str) and 'nm' in tech_node:
+            tech_node = tech_node[:-2]  # remove the unit
+        size_in_bytes = attributes['width'] * attributes['depth'] // 8
+        if size_in_bytes == 0:
+            # zero size DRAM will simply have zero energy and area
+            return 0
+        wordsize_in_bytes = attributes['width'] // 8
+        if 'n_banks' in attributes:
+            desired_n_banks = attributes['n_banks']
+        else:
+            desired_n_banks = None
+        dram_type = attributes['type']
+        desired_action_name = interface['action_name']
+        desired_entry_key = (desired_action_name, tech_node, size_in_bytes, wordsize_in_bytes, desired_n_banks, dram_type)
+        if desired_entry_key not in self.records:
+            self.DRAM_populate_data(interface)
+        energy = self.records[desired_entry_key]
         return energy
 
     def DRAM_area_supported(self, interface):
@@ -177,8 +175,173 @@ class CactiWrapper:
 
     def DRAM_estimate_area(self, interface):
         # DRAM area is zero
-        return 0
+        attributes = interface['attributes']
+        tech_node = attributes['technology']
+        if isinstance(tech_node, str) and 'nm' in tech_node:
+            tech_node = tech_node[:-2]  # remove the unit
+        size_in_bytes = attributes['width'] * attributes['depth'] // 8
+        if size_in_bytes == 0:
+            # zero size SRAM will simply have zero energy and area
+            return 0
+        wordsize_in_bytes = attributes['width'] // 8
+        if 'n_banks' in attributes:
+            desired_n_banks = attributes['n_banks']
+        else:
+            desired_n_banks = None
+        dram_type = attributes['type']
+        desired_entry_key = ('area', tech_node, size_in_bytes, wordsize_in_bytes, desired_n_banks, dram_type)
+        if desired_entry_key not in self.records:
+            self.DRAM_populate_data(interface)
+        area = self.records[desired_entry_key]
+        return area
+    
+    def cacti_wrapper_for_DRAM(self, cacti_exec_dir, tech_node, size_in_bytes, wordsize_in_bytes, n_banks, dram_type, cfg_file_path):
+        tech_node_um = float(int(tech_node)/1000)  # technology node described in um
+        dram_size = size_in_bytes
+        one_gb = 1 << 30
+        page_size = wordsize_in_bytes
+        if int(wordsize_in_bytes) < 4:  # minimum line size in cacti is 32-bit/4-byte
+            page_size = 4
+        page_size_bits = page_size * 8
 
+        if int(dram_size) / int(page_size) < 32768:
+            print('WARN: CACTI Plug-in...  intended DRAM size is smaller than 32768 rows')
+            print('intended DRAM size:', dram_size, 'page size:', page_size)
+            dram_size = int(page_size) * 32768  # minimum dram size: 32678 rows
+            print('corrected DRAM size:', dram_size)
+
+        # dram types: ['DDR3','HBM2','GDDR5','LPDDR','LPDDR4']
+        cell_type = '"comm-dram"'
+        if dram_type.startswith('LPDDR'):
+            cell_type = '"lp-dram"'
+
+        dirname = os.path.dirname(__file__)
+        dram_file = os.path.join(dirname, 'dram_types.json')
+        with open(dram_file) as f:
+            dram_info = json.load(f)
+
+        my_dram_info = dram_info[dram_type]
+        burst_length = my_dram_info["burst_length"]
+        io_width = my_dram_info["io_width"]
+        sys_frequency = my_dram_info["sys_frequency"]
+        prefetch_width = my_dram_info["prefetch_width"]
+
+        if n_banks is None:
+            n_banks = my_dram_info['banks']
+
+        block_size = 8
+        if io_width > 64:
+            block_size = io_width // 8
+        
+        cfg_file_name = os.path.split(cfg_file_path)[1]
+        default_cfg_file_path = os.path.join(os.path.dirname(cfg_file_path), 'default_DRAM.cfg')
+        populated_cfg_file_path = cacti_exec_dir + '/' + cfg_file_name
+        shutil.copyfile(default_cfg_file_path, populated_cfg_file_path)
+        print("copy ", default_cfg_file_path, " to ", populated_cfg_file_path)
+        f = open(populated_cfg_file_path, 'a+')
+        f.write('\n############## User-Specified Hardware Attributes ##############\n')
+        if dram_size < one_gb:
+            f.write('-size (bytes) ' + str(dram_size) + '\n')
+        else:
+            f.write('-size (Gb) ' + str(dram_size >> 30) + '\n')
+        f.write('-UCA bank count '+ str(n_banks) + '\n')
+        f.write('-technology (u) ' + str(tech_node_um) + '\n')
+        f.write('-Data array cell type - ' + cell_type + '\n')
+        f.write('-page size (bits) ' + str(page_size_bits) + '\n')
+        f.write('-burst depth ' + str(burst_length) + '\n')
+        f.write('-IO width ' + str(io_width) + '\n')
+        f.write('-system frequency (MHz) ' + str(sys_frequency) + '\n')
+        f.write('-internal prefetch width ' + str(prefetch_width) + '\n')
+        f.write('-output/input bus width ' + str(io_width) + '\n')
+        f.write('-block size (bytes) ' + str(block_size) + '\n')
+        f.close()
+
+        # create a temporary output file to redirect terminal output of cacti
+        if os.path.isfile(cacti_exec_dir + 'tmp_output.txt'):
+            os.remove(cacti_exec_dir + 'tmp_output.txt')
+        temp_output =  tempfile.mkstemp()[0]
+        # call cacti executable to evaluate energy consumption
+        cacti_exec_path = cacti_exec_dir + '/cacti'
+        exec_list = [cacti_exec_path, '-infile', cfg_file_name]
+        subprocess.call(exec_list, stdout=temp_output)
+
+        temp_dir = tempfile.gettempdir()
+        accelergy_tmp_dir = os.path.join(temp_dir, 'accelergy')
+        if os.path.exists(accelergy_tmp_dir):
+            if len(os.listdir(accelergy_tmp_dir)) > 50: # clean up the dir if there are more than 50 files
+                shutil.rmtree(accelergy_tmp_dir, ignore_errors=True)
+                os.mkdir(accelergy_tmp_dir)
+        else:
+            os.mkdir(accelergy_tmp_dir)
+        # shutil.copy(populated_cfg_file_path,
+        #             os.path.join(temp_dir, 'accelergy/'+ cfg_file_name + '_' + datetime.now().strftime("%m_%d_%H_%M_%S")))
+        print("CACTI plug-in removing temp file: ", populated_cfg_file_path)
+        os.remove(populated_cfg_file_path)
+
+
+    def DRAM_populate_data(self, interface):
+        attributes = interface['attributes']
+        tech_node = attributes['technology']
+        if isinstance(tech_node, str) and 'nm' in tech_node:
+            tech_node = tech_node[:-2]  # remove the unit
+
+        size_in_bytes = attributes['width'] * attributes['depth'] // 8
+        wordsize_in_bytes = attributes['width'] // 8
+        dram_type = attributes['type']
+
+        if 'n_banks' in attributes:
+            desired_n_banks = attributes['n_banks']
+            if not math.ceil(math.log2(n_banks)) == math.floor(math.log2(n_banks)):
+                n_banks = 2**(math.ceil(math.log2(n_banks)))
+                print('WARN: Cacti-plug-in... n_banks attribute is not a power of 2:', desired_n_banks)
+                print('corrected "n_banks": ', n_banks)
+        else:
+            desired_n_banks = None
+            n_banks = None
+  
+
+        
+        print('Info: CACTI plug-in... Querying CACTI for request:\n', interface)
+        curr_dir = os.path.abspath(os.getcwd())
+        cacti_exec_dir = self.search_for_cacti_exec()
+        os.chdir(cacti_exec_dir)
+
+        cfg_file_name = self.output_prefix + datetime.now().strftime("%m_%d_%H_%M_%S") + '_DRAM.cfg' if self.output_prefix is not '' \
+                        else  datetime.now().strftime("%m_%d_%H_%M_%S") + '_DRAM.cfg'
+        cfg_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg_file_name)
+        self.cacti_wrapper_for_DRAM(cacti_exec_dir, tech_node, size_in_bytes, wordsize_in_bytes,
+                                    n_banks, dram_type, cfg_file_path)
+        
+        for action_name in ['read', 'write', 'idle']:
+            entry_key = (action_name, tech_node, size_in_bytes, wordsize_in_bytes, desired_n_banks, dram_type)
+            if action_name == 'read':
+                cacti_entry = ' Dynamic read energy (nJ)'  # nJ
+            elif action_name == 'write':
+                cacti_entry = ' Dynamic write energy (nJ)'  # nJ
+            else:
+                cacti_entry = ' Standby leakage per bank(mW)'  # mW
+            csv_file_path = cacti_exec_dir + '/' + cfg_file_name + '.out'
+            # query Cacti
+            with open(csv_file_path) as csv_file:
+                reader = csv.DictReader(csv_file)
+                row = list(reader)[-1]
+                if not action_name == 'idle':
+                    energy = float(row[cacti_entry]) * 10 ** 3  # original energy is in has nJ as the unit
+                else:
+                    standby_power_in_w = float(row[cacti_entry]) * 10 ** -3  # mW -> W
+                    idle_energy_per_bank_in_j = standby_power_in_w * float(row[' Random cycle time (ns)']) * 10 ** -9
+                    idle_energy_per_bank_in_pj = idle_energy_per_bank_in_j * 10 ** 12
+                    energy = idle_energy_per_bank_in_pj * float(row[' Number of banks'])
+            # record energy entry
+            self.records.update({entry_key: energy})
+
+        # record area entry
+        entry_key = ('area', tech_node, size_in_bytes, wordsize_in_bytes, desired_n_banks, dram_type)
+        area = float(row[' Area (mm2)']) * 10**6 # area in micron squared
+        self.records.update({entry_key: area})
+        os.remove(csv_file_path)  # all information recorded, no need for saving the file
+        os.chdir(curr_dir)
+   
     # ----------------- SRAM related ---------------------------
     def SRAM_populate_data(self, interface):
         attributes = interface['attributes']

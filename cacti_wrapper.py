@@ -199,14 +199,14 @@ class CactiWrapper:
         tech_node_um = float(int(tech_node)/1000)  # technology node described in um
         dram_size = size_in_bytes
         one_gb = 1 << 30
-        page_size = wordsize_in_bytes
+        burst_size = wordsize_in_bytes
         if int(wordsize_in_bytes) < 4:  # minimum line size in cacti is 32-bit/4-byte
-            page_size = 4
-        page_size_bits = page_size * 8
+            burst_size = 4
+        page_size = 4096
 
         if int(dram_size) / int(page_size) < 32768:
-            print('WARN: CACTI Plug-in...  intended DRAM size is smaller than 32768 rows')
-            print('intended DRAM size:', dram_size, 'page size:', page_size)
+            print('WARN: CACTI Plug-in...  intended DRAM size is smaller than 32768 pages')
+            print('intended DRAM size:', dram_size)
             dram_size = int(page_size) * 32768  # minimum dram size: 32678 rows
             print('corrected DRAM size:', dram_size)
 
@@ -228,10 +228,6 @@ class CactiWrapper:
 
         if n_banks is None:
             n_banks = my_dram_info['banks']
-
-        block_size = 8
-        if io_width > 64:
-            block_size = io_width // 8
         
         cfg_file_name = os.path.split(cfg_file_path)[1]
         default_cfg_file_path = os.path.join(os.path.dirname(cfg_file_path), 'default_DRAM.cfg')
@@ -247,13 +243,12 @@ class CactiWrapper:
         f.write('-UCA bank count '+ str(n_banks) + '\n')
         f.write('-technology (u) ' + str(tech_node_um) + '\n')
         f.write('-Data array cell type - ' + cell_type + '\n')
-        f.write('-page size (bits) ' + str(page_size_bits) + '\n')
         f.write('-burst depth ' + str(burst_length) + '\n')
         f.write('-IO width ' + str(io_width) + '\n')
         f.write('-system frequency (MHz) ' + str(sys_frequency) + '\n')
         f.write('-internal prefetch width ' + str(prefetch_width) + '\n')
         f.write('-output/input bus width ' + str(io_width) + '\n')
-        f.write('-block size (bytes) ' + str(block_size) + '\n')
+        f.write('-block size (bytes) ' + str(burst_size) + '\n')
         f.close()
 
         # create a temporary output file to redirect terminal output of cacti

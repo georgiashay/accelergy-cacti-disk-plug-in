@@ -51,9 +51,9 @@
     },
     "HBM2": {
         "burst_length": 4,
-        "io_width": 64,
+        "io_width": 128,
         "sys_frequency": 800,
-        "prefetch_width": 8,
+        "prefetch_width": 2,
         "banks": 16,
         "page_size": 8192
     },

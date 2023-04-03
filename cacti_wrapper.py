@@ -225,6 +225,7 @@ class CactiWrapper:
         io_width = my_dram_info["io_width"]
         sys_frequency = my_dram_info["sys_frequency"]
         prefetch_width = my_dram_info["prefetch_width"]
+        page_size_bits = my_dram_info["page_size"]
 
         if n_banks is None:
             n_banks = my_dram_info['banks']
@@ -249,6 +250,8 @@ class CactiWrapper:
         f.write('-internal prefetch width ' + str(prefetch_width) + '\n')
         f.write('-output/input bus width ' + str(io_width) + '\n')
         f.write('-block size (bytes) ' + str(burst_size) + '\n')
+        f.write('-page size (bits) ' + str(page_size_bits) + '\n')
+
         f.close()
 
         # create a temporary output file to redirect terminal output of cacti

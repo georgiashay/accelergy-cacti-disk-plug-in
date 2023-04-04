@@ -17,7 +17,7 @@ class CactiWrapper:
         self.estimator_name =  "Cacti"
         self.output_prefix = output_prefix
         # example primitive classes supported by this estimator
-        self.supported_pc = ['SRAM', 'DRAM', 'cache']
+        self.supported_pc = ['SRAM', 'DRAM', 'cache', 'Disk']
         self.records = {} # enable data reuse
 
     def primitive_action_supported(self, interface):
@@ -131,6 +131,45 @@ class CactiWrapper:
                         cacti_exec_path = root + os.sep + file_name
                         cacti_exec_dir = os.path.dirname(cacti_exec_path)
                         return cacti_exec_dir
+                    
+    # ----------------- Disk related ---------------------------
+    def Disk_attr_supported(self, attributes):
+        if 'width' in attributes:
+            return True
+        return False
+    
+    def Disk_action_supported(self, action_name, arguments):
+        supported_actions = ['read', 'write', 'idle']
+        if action_name in supported_actions:
+            return 60
+        return None
+    
+    def Disk_estimate_energy(self, interface):
+        action_name = interface['action_name']
+        width = interface['attributes']['width']
+
+        if action_name == 'idle':
+            # Not counting idle storage energy, only transfers
+            return 0
+        
+        # Assuming NVME
+        # https://devicetests.com/how-many-watts-does-an-ssd-use
+        # Assuming around 3000MB/s
+        if action_name == 'read':
+            watts = 5
+            bandwidth = 3000 * (1 << 20)
+            pj_per_byte = watts * (10**12) / bandwidth
+            pj_per_bit = pj_per_byte / 8
+            return pj_per_bit * width
+        elif action_name == 'write':
+            watts = 6.5
+            bandwidth = 3000 * (1 << 20)
+            pj_per_byte = watts * (10**12) / bandwidth
+            pj_per_bit = pj_per_byte / 8
+            return pj_per_bit * width
+        
+    def Disk_estimate_area(self, interface):
+        return 0
 
     # ----------------- DRAM related ---------------------------
 
@@ -144,7 +183,7 @@ class CactiWrapper:
     def DRAM_action_supported(self, action_name, arguments):
         supported_actions = ['read', 'write', 'idle']
         if action_name in supported_actions:
-            return 95
+            return CACTI_ACCURACY
         else:
             return None
 

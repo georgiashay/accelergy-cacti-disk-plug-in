@@ -241,13 +241,6 @@ class CactiWrapper:
         burst_size = wordsize_in_bytes
         if int(wordsize_in_bytes) < 4:  # minimum line size in cacti is 32-bit/4-byte
             burst_size = 4
-        page_size = 4096
-
-        if int(dram_size) / int(page_size) < 32768:
-            print('WARN: CACTI Plug-in...  intended DRAM size is smaller than 32768 pages')
-            print('intended DRAM size:', dram_size)
-            dram_size = int(page_size) * 32768  # minimum dram size: 32678 rows
-            print('corrected DRAM size:', dram_size)
 
         # dram types: ['DDR3','HBM2','GDDR5','LPDDR','LPDDR4']
         cell_type = '"comm-dram"'
@@ -265,6 +258,17 @@ class CactiWrapper:
         sys_frequency = my_dram_info["sys_frequency"]
         prefetch_width = my_dram_info["prefetch_width"]
         page_size_bits = my_dram_info["page_size"]
+        page_size = page_size_bits // 8
+        num_dram = my_dram_info["devices_per_dimm"]
+
+        # Divide DRAM into ~8, each with smaller io width, to build full memory rank
+        dram_size = dram_size // num_dram
+
+        if int(dram_size) / int(page_size) < 32768:
+            print('WARN: CACTI Plug-in...  intended DRAM size is smaller than 32768 pages')
+            print('intended DRAM size:', dram_size)
+            dram_size = int(page_size) * 32768  # minimum dram size: 32678 rows
+            print('corrected DRAM size:', dram_size)
 
         if n_banks is None:
             n_banks = my_dram_info['banks']
@@ -335,8 +339,14 @@ class CactiWrapper:
         else:
             desired_n_banks = None
             n_banks = None
-  
 
+        dirname = os.path.dirname(__file__)
+        dram_file = os.path.join(dirname, 'dram_types.json')
+        with open(dram_file) as f:
+            dram_info = json.load(f)
+
+        my_dram_info = dram_info[dram_type]
+        num_dram = my_dram_info["devices_per_dimm"]
         
         print('Info: CACTI plug-in... Querying CACTI for request:\n', interface)
         curr_dir = os.path.abspath(os.getcwd())
@@ -363,12 +373,12 @@ class CactiWrapper:
                 reader = csv.DictReader(csv_file)
                 row = list(reader)[-1]
                 if not action_name == 'idle':
-                    energy = float(row[cacti_entry]) * 10 ** 3  # original energy is in has nJ as the unit
+                    energy = num_dram * float(row[cacti_entry]) * 10 ** 3  # original energy is in has nJ as the unit
                 else:
                     standby_power_in_w = float(row[cacti_entry]) * 10 ** -3  # mW -> W
                     idle_energy_per_bank_in_j = standby_power_in_w * float(row[' Random cycle time (ns)']) * 10 ** -9
                     idle_energy_per_bank_in_pj = idle_energy_per_bank_in_j * 10 ** 12
-                    energy = idle_energy_per_bank_in_pj * float(row[' Number of banks'])
+                    energy = num_dram * idle_energy_per_bank_in_pj * float(row[' Number of banks'])
             # record energy entry
             self.records.update({entry_key: energy})
 

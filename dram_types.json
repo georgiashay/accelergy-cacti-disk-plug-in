@@ -1,7 +1,9 @@
 {
     "DDR": {
         "burst_length": 2,
-        "io_width": 64,
+        "io_width": 8,
+        "channel_io_width": 64,
+        "devices_per_dimm": 8,
         "sys_frequency": 166,
         "prefetch_width": 2,
         "banks": 4,
@@ -9,7 +11,9 @@
     },
     "DDR2": {
         "burst_length": 4,
-        "io_width": 64,
+        "io_width": 8,
+        "channel_io_width": 64,
+        "devices_per_dimm": 8,
         "sys_frequency": 333,
         "prefetch_width": 4,
         "banks": 8,
@@ -17,7 +21,9 @@
     },
     "DDR3": {
         "burst_length": 8,
-        "io_width": 64,
+        "io_width": 8,
+        "channel_io_width": 64,
+        "devices_per_dimm": 8,
         "sys_frequency": 667,
         "prefetch_width": 8,
         "banks": 8,
@@ -25,7 +31,9 @@
     },
     "DDR4": {
         "burst_length": 8,
-        "io_width": 64,
+        "io_width": 8,
+        "channel_io_width": 64,
+        "devices_per_dimm": 8,
         "sys_frequency": 1200,
         "prefetch_width": 8,
         "banks": 16,
@@ -34,7 +42,9 @@
     },
     "DDR5": {
         "burst_length": 16,
-        "io_width": 32,
+        "io_width": 8,
+        "channel_io_width": 32,
+        "devices_per_dimm": 8,
         "sys_frequency": 2400,
         "prefetch_width": 16,
         "banks": 32,
@@ -43,7 +53,9 @@
     },
     "GDDR5": {
         "burst_length": 8,
-        "io_width": 256,
+        "io_width": 16,
+        "channel_io_width": 32,
+        "devices_per_dimm": 2,
         "sys_frequency": 7000,
         "prefetch_width": 16,
         "banks": 8,
@@ -52,6 +64,8 @@
     "HBM2": {
         "burst_length": 4,
         "io_width": 128,
+        "channel_io_width": 128,
+        "devices_per_dimm": 1,
         "sys_frequency": 800,
         "prefetch_width": 2,
         "banks": 16,
@@ -60,6 +74,8 @@
     "LPDDR": {
         "burst_length": 8,
         "io_width": 16,
+        "channel_io_width": 16,
+        "devices_per_dimm": 1,
         "sys_frequency": 200,
         "prefetch_width": 2,
         "banks": 4,
@@ -68,6 +84,8 @@
     "LPDDR2": {
         "burst_length": 8,
         "io_width": 16,
+        "channel_io_width": 16,
+        "devices_per_dimm": 1,
         "sys_frequency": 400,
         "prefetch_width": 4,
         "banks": 8,
@@ -76,6 +94,8 @@
     "LPDDR3": {
         "burst_length": 8,
         "io_width": 16,
+        "channel_io_width": 16,
+        "devices_per_dimm": 1,
         "sys_frequency": 800,
         "prefetch_width": 8,
         "banks": 8,
@@ -84,6 +104,8 @@
     "LPDDR4": {
         "burst_length": 16,
         "io_width": 16,
+        "channel_io_width": 16,
+        "devices_per_dimm": 1,
         "sys_frequency": 1600,
         "prefetch_width": 16,
         "banks": 8,
@@ -92,6 +114,8 @@
     "LPDDR5": {
         "burst_length": 16,
         "io_width": 16,
+        "channel_io_width": 16,
+        "devices_per_dimm": 1,
         "sys_frequency": 3200,
         "prefetch_width": 16,
         "banks": 16,
